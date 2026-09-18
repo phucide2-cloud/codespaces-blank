@@ -1,0 +1,17 @@
+for i in {1..20}; do
+  curl -4 --noproxy '*' -o /dev/null -s \
+    -w "%{time_connect}\n" \
+    "https://bepro-erp.web.app/?x=$RANDOM"
+done | awk '{sum+=$1; if(min==0||$1<min)min=$1; if($1>max)max=$1} END {printf "Min: %.2f ms\nAvg: %.2f ms\nMax: %.2f ms\n", min*1000, sum/NR*1000, max*1000}'
+
+
+
+
+
+
+# 3. Tổng thời gian request
+for i in {1..30}; do
+  curl -4 --noproxy '*' -o /dev/null -s \
+    -w "%{time_total}\n" \
+    "https://bepro-erp.web.app/?x=$RANDOM"
+done
