@@ -20,6 +20,8 @@ import time
 from datetime import datetime
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
+sys.stdout.reconfigure(encoding='utf-8')
+
 # Colors for Terminal Logs
 class Colors:
     HEADER = '\033[95m'
@@ -51,6 +53,30 @@ class BeproBot:
         self.total_success = 0
         self.total_fail = 0
 
+        # --- DANH SÁCH ƯU TIÊN THEO NGÀY VÀ GIỜ ---
+        # Cấu hình danh sách ở đây. Chuỗi khớp với nội dung trên bảng.
+        # Ưu tiên từ trên xuống dưới (trái sang phải).
+        self.date_priority = ['10/11', '10/12', '10/13']
+        self.time_priority = ['19:00 ~ 22:00', '15:00 ~ 18:00', '11:00 ~ 14:00', '07:00 ~ 10:00']
+
+    def sort_slots(self, slots):
+        """Sắp xếp các slot dựa trên độ ưu tiên ngày và giờ"""
+        def get_score(slot):
+            date_score = 999
+            for i, p_date in enumerate(self.date_priority):
+                if p_date in slot.get('date', ''):
+                    date_score = i
+                    break
+            
+            time_score = 999
+            for i, p_time in enumerate(self.time_priority):
+                if p_time in slot.get('time', ''):
+                    time_score = i
+                    break
+            return (date_score, time_score)
+
+        return sorted(slots, key=get_score)
+
     async def get_cooldown_remaining(self) -> int:
         """Checks if the submit button displays 'Wait Xs' cooldown text."""
         try:
@@ -71,35 +97,80 @@ class BeproBot:
             pass
         return 0
 
-    async def scan_available_slots(self):
-        """Scans DOM for active/enabled Mode 1.0 and Mode 0.5 slot buttons."""
-        return await self.page.evaluate('''() => {
+    async def scan_and_click_fastest_slot(self):
+        """Tối ưu hóa tốc độ: Quét, chấm điểm ưu tiên và click ngay lập tức bằng Javascript tại Browser"""
+        js_code = f'''() => {{
+            const datePriority = {self.date_priority};
+            const timePriority = {self.time_priority};
+            const modePriority = "{self.mode_priority}";
             
             const buttons = Array.from(document.querySelectorAll('tbody tr td button, .table button'));
-            const res = { mode1: [], mode05: [], other: [] };
-
-            buttons.forEach((btn, index) => {
-                
-
+            let bestSlot = null;
+            let bestScore = [999, 999, 999]; // [mode, date, time]
+            
+            for (let index = 0; index < buttons.length; index++) {{
+                const btn = buttons[index];
                 const isDisabled = btn.disabled || btn.getAttribute('disabled') !== null || btn.getAttribute('aria-disabled') === 'true';
-                if (isDisabled) return;
+                if (isDisabled) continue;
 
                 const style = window.getComputedStyle(btn);
-                if (style.cursor === 'not-allowed' || parseFloat(style.opacity) < 0.8) return;
+                if (style.cursor === 'not-allowed' || parseFloat(style.opacity) < 0.8) continue;
 
                 const text = (btn.innerText || btn.textContent || '').trim();
-                const selector = `tbody tr td button:nth-of-type(${index + 1})`;
+                if (text.includes('Clear') || text.includes('Submit') || text.includes('Wait')) continue;
+                
+                let isMode1 = text.includes('Mode 1.0') || text === '1.0' || text === '1';
+                let isMode05 = text.includes('Mode 0.5') || text === '0.5';
+                
+                let modeScore = 999;
+                if (modePriority === '1.0_FIRST') {{
+                    if (isMode1) modeScore = 1; else if (isMode05) modeScore = 2;
+                }} else if (modePriority === '1.0_ONLY') {{
+                    if (isMode1) modeScore = 1; else continue;
+                }} else if (modePriority === '0.5_ONLY') {{
+                    if (isMode05) modeScore = 1; else continue;
+                }} else {{
+                    if (isMode1) modeScore = 1; else if (isMode05) modeScore = 2; else modeScore = 3;
+                }}
+                
+                if (modeScore === 999) continue;
 
-                if (text.includes('Mode 1.0') || text === '1.0' || text === '1') {
-                    res.mode1.push({ index, text: 'Mode 1.0' });
-                } else if (text.includes('Mode 0.5') || text === '0.5') {
-                    res.mode05.push({ index, text: 'Mode 0.5' });
-                } else if (text && !text.includes('Clear') && !text.includes('Submit') && !text.includes('Wait')) {
-                    res.other.push({ index, text });
-                }
-            });
-            return [res, buttons.length];
-        }''')
+                let timeText = ''; let dateText = '';
+                const td = btn.closest('td'); const tr = btn.closest('tr');
+                if (tr && td) {{
+                    const firstTd = tr.querySelector('td');
+                    if (firstTd) timeText = (firstTd.innerText || firstTd.textContent || '').trim();
+                    const table = tr.closest('table');
+                    if (table) {{
+                        const ths = table.querySelectorAll('thead tr th, thead tr td, tbody tr:first-child td');
+                        if (ths[td.cellIndex]) dateText = (ths[td.cellIndex].innerText || ths[td.cellIndex].textContent || '').trim();
+                    }}
+                }}
+                
+                let dateScore = 999;
+                for (let i = 0; i < datePriority.length; i++) {{
+                    if (dateText.includes(datePriority[i])) {{ dateScore = i; break; }}
+                }}
+                let timeScore = 999;
+                for (let i = 0; i < timePriority.length; i++) {{
+                    if (timeText.includes(timePriority[i])) {{ timeScore = i; break; }}
+                }}
+                
+                if (modeScore < bestScore[0] || 
+                   (modeScore === bestScore[0] && dateScore < bestScore[1]) || 
+                   (modeScore === bestScore[0] && dateScore === bestScore[1] && timeScore < bestScore[2])) {{
+                    bestScore = [modeScore, dateScore, timeScore];
+                    bestSlot = {{ btn, index, text, timeText, dateText }};
+                }}
+            }}
+            
+            if (bestSlot) {{
+                bestSlot.btn.click(); // CLICK NGAY LẬP TỨC
+                return {{ text: bestSlot.text, time: bestSlot.timeText, date: bestSlot.dateText }};
+            }}
+            return null;
+        }}'''
+        return await self.page.evaluate(js_code)
 
     async def click_submit_and_monitor(self, slot_desc: str):
         """Clicks Submit button and waits until server response (success/fail toast or cooldown)."""
@@ -300,44 +371,19 @@ class BeproBot:
                     await asyncio.sleep(1.5)
                     continue
 
-                # Scan slots
-                available, length = await self.scan_available_slots()
-                print(f'Total buttons found: {length}')
-                #print(available)
-                target_slot = None
-
-                if self.mode_priority == '1.0_FIRST':
-                    if available['mode1']:
-                        target_slot = available['mode1'][0]
-                        log(f"🎯 Found active Mode 1.0 slot!", 'success')
-                    elif available['mode05']:
-                        target_slot = available['mode05'][0]
-                        log(f"🎯 No Mode 1.0 available, found active Mode 0.5 slot!", 'info')
-                elif self.mode_priority == '1.0_ONLY':
-                    if available['mode1']:
-                        target_slot = available['mode1'][0]
-                elif self.mode_priority == '0.5_ONLY':
-                    if available['mode05']:
-                        target_slot = available['mode05'][0]
-                else:
-                    target_slot = (available['mode1'] or available['mode05'] or available['other'] or [None])[0]
+                # Quét và click trực tiếp ở Browser (0 ms latency)
+                target_slot = await self.scan_and_click_fastest_slot()
 
                 if target_slot:
-                    idx = target_slot['index']
-                    log(f"Clicking slot [{target_slot['text']}] at index {idx}...", 'info')
-                    # Click slot button
-                    await self.page.evaluate(f'''(idx) => {{
-                        const buttons = Array.from(document.querySelectorAll('tbody tr td button, .table button'));
-                        if (buttons[idx]) buttons[idx].click();
-                    }}''', idx)
-
-                    await asyncio.sleep(0.05)
+                    log(f"⚡ FAST CLICK: Đã tự động chọn slot [{target_slot['text']}] at {target_slot.get('date')} {target_slot.get('time')}", 'success')
+                    await asyncio.sleep(0.01)
                     await self.click_submit_and_monitor(target_slot['text'])
 
             except Exception as e:
                 log(f"Scan loop exception: {e}", 'error')
 
-            await asyncio.sleep(0.05)
+            # Chờ 0s để nhường luồng (event loop), tốc độ quét tối đa
+            await asyncio.sleep(0)
 
 async def main():
     parser = argparse.ArgumentParser(description="Bepro ERP Slot Tracking Bot")
