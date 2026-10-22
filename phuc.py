@@ -56,8 +56,8 @@ class BeproBot:
         # --- DANH SÁCH ƯU TIÊN THEO NGÀY VÀ GIỜ ---
         # Cấu hình danh sách ở đây. Chuỗi khớp với nội dung trên bảng.
         # Ưu tiên từ trên xuống dưới (trái sang phải).
-        self.date_priority = ['10/11', '10/12', '10/13']
-        self.time_priority = ['19:00 ~ 22:00', '15:00 ~ 18:00', '11:00 ~ 14:00', '07:00 ~ 10:00']
+        self.date_priority = []
+        self.time_priority = []
 
     def sort_slots(self, slots):
         """Sắp xếp các slot dựa trên độ ưu tiên ngày và giờ"""
