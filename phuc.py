@@ -299,10 +299,10 @@ class BeproBot:
         """
         Automatically login with email and password.
         """
-        EMAIL = 'phucide1@gmail.com'
+        EMAIL = 'tutuanvi2001@gmail.com'
         #EMAIL = 'huynhkimxuan05@gmail.com'
         
-        PASSWORD = 'Phuc2468456'
+        PASSWORD = '4102001tuanvi'
         #PASSWORD = 'Bepro@2026'
         try:
             print("Attempting auto-login...")
