@@ -385,7 +385,7 @@ class BeproBot:
                 log(f"Scan loop exception: {e}", 'error')
 
             # Chờ 0s để nhường luồng (event loop), tốc độ quét tối đa
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.2)
 
 async def main():
     parser = argparse.ArgumentParser(description="Bepro ERP Slot Tracking Bot")
