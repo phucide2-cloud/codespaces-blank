@@ -244,6 +244,8 @@ class BeproBot:
                     log(f"❌ Registration failed ({result['msg']}). Reloading page to retry...", 'error')
                     await self.page.reload()
                     await self.page.wait_for_load_state('domcontentloaded')
+                    await asyncio.sleep(5)
+                    await self.click_pre_tracking_button(self.page)
                     return False
 
             await asyncio.sleep(0.3)
@@ -306,7 +308,7 @@ class BeproBot:
             print("Attempting auto-login...")
             
             # Fill email
-            email_input = page.locator('//*[@id="identifier"]')
+            email_input = page.locator('//*[@id="email"]')
             if await email_input.is_visible():
                 await email_input.fill(EMAIL)
                 print("✅ Email entered")
@@ -328,7 +330,7 @@ class BeproBot:
             await asyncio.sleep(0.5)
             
             # Click login button
-            login_button = page.locator('//*[@id="root"]/div/div/div/div/div/form/div/button')
+            login_button = page.locator('//*[@id="root"]/div/div/div/div/div/form/div[2]/button')
             if await login_button.is_visible():
                 await login_button.click()
                 print("✅ Login button clicked")
